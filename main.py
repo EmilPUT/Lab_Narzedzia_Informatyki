@@ -1,114 +1,73 @@
-from pydantic import BaseModel
-from typing import Dict, List
+from src.manager import Manager
+from src.models import Parameters
 
-import json
 
-class Parameters(BaseModel):
-    apartments_json_path: str = 'data/apartments.json'
-    tenants_json_path: str = 'data/tenants.json'
-    transfers_json_path: str = 'data/transfers.json'
-    bills_json_path: str = 'data/bills.json'
+def print_section_header(title: str):
+    """Print a formatted section header"""
+    print(f"\n{'=' * 70}")
+    print(f"  {title}")
+    print(f"{'=' * 70}")
 
-class Room(BaseModel):
-    name: str
-    area_m2: float
 
-class Apartment(BaseModel):
-    key: str
-    name: str
-    location: str
-    area_m2: float
-    rooms: Dict[str, Room]
+def print_subsection_header(title: str):
+    """Print a formatted subsection header"""
+    print(f"\n  {title}")
+    print(f"  {'-' * 40}")
 
-    @staticmethod
-    def from_json_file(file_path: str) -> Dict[str,'Apartment']:
-        data = None
-        with open(file_path, 'r') as file:
-            data = json.load(file)
-        assert isinstance(data, dict), "Expected a dictionary of apartments"
-        return {key: Apartment(**apartment) for key, apartment in data.items()}
+
+def format_currency(amount: float) -> str:
+    """Format amount as currency"""
+    return f"{amount:,.2f} PLN"
+
+
+def display_apartments(manager):
+    """Display all apartments with their rooms and bills"""
+    print_section_header("APARTMENTS")
     
-class Bill(BaseModel):
-    key: str
-    apartment_key: str
-    amount_pln: float
-    due_date: str
+    for apartment in manager.apartments.values():
+        print(f"\n📍 {apartment.name} ({apartment.key})")
+        print(f"   Location: {apartment.location}")
+        print(f"   Total Area: {apartment.area_m2} m²")
+        
+        print_subsection_header("Rooms")
+        for room in apartment.rooms.values():
+            print(f"      • {room.name:<25} {room.area_m2:>6} m²")
+        
+        # Find bills for this apartment
+        apartment_bills = [bill for bill in manager.bills if bill.apartment == apartment.key]
+        if apartment_bills:
+            print_subsection_header("Bills")
+            for bill in apartment_bills:
+                month_year = f"{bill.settlement_month}/{bill.settlement_year}" if bill.settlement_month and bill.settlement_year else "N/A"
+                print(f"      • {bill.type:<15} {format_currency(bill.amount_pln):>15}  Due: {bill.date_due}  Period: {month_year}")
 
-    @staticmethod
-    def from_json_file(file_path: str) -> Dict[str, 'Bill']:
-        data = None
-        with open(file_path, 'r') as file:
-            data = json.load(file)
-        assert isinstance(data, dict), "Expected a dictionary of bills"
-        return {key: Bill(**bill) for key, bill in data.items()}
 
+def display_tenants(manager):
+    """Display all tenants with their details and transfers"""
+    print_section_header("TENANTS")
     
-class Tenant(BaseModel):
-    name: str
-    apartment: str
-    room: str
-    rent_pln: float
-    deposit_pln: float
-    date_agreement_from: str
-    date_agreement_to: str
+    for tenant in manager.tenants.values():
+        print(f"\n👤 {tenant.name}")
+        print(f"   Apartment: {tenant.apartment}")
+        print(f"   Room: {tenant.room}")
+        print(f"   Rent: {format_currency(tenant.rent_pln)}/month")
+        print(f"   Deposit: {format_currency(tenant.deposit_pln)}")
+        print(f"   Agreement: {tenant.date_agreement_from} to {tenant.date_agreement_to}")
+        
+        # Find transfers for this tenant
+        tenant_transfers = [transfer for transfer in manager.transfers if transfer.tenant == tenant.name]
+        if tenant_transfers:
+            print_subsection_header("Transfers")
+            for transfer in tenant_transfers:
+                month_year = f"{transfer.settlement_month}/{transfer.settlement_year}" if transfer.settlement_month and transfer.settlement_year else "N/A"
+                print(f"      • {format_currency(transfer.amount_pln):>15}  Date: {transfer.date}  Period: {month_year}")
 
-    @staticmethod
-    def from_json_file(file_path: str) -> Dict[str,'Tenant']:
-        data = None
-        with open(file_path, 'r') as file:
-            data = json.load(file)
-        assert isinstance(data, dict), "Expected a dictionary of tenants"
-        return {key: Tenant(**tenant) for key, tenant in data.items()}
-    
-
-class Transfer(BaseModel):
-    amount_pln: float
-    date: str
-    settlement_year: int | None
-    settlement_month: int | None
-    tenant: str
-
-    @staticmethod
-    def from_json_file(file_path: str) -> List['Transfer']:
-        data = None
-        with open(file_path, 'r') as file:
-            data = json.load(file)
-        assert isinstance(data, list), "Expected a list of transfers"
-        return [Transfer(**transfer) for transfer in data]
-    
-
-class Manager:
-    def __init__(self, parameters: Parameters):
-        self.parameters = parameters 
-
-        self.apartments = {}
-        self.tenants = {}
-        self.transfers = []
-        self.bills = {}
-       
-        self.load_data()
-
-    def load_data(self):
-        self.apartments = Apartment.from_json_file(self.parameters.apartments_json_path)
-        self.tenants = Tenant.from_json_file(self.parameters.tenants_json_path)
-        self.transfers = Transfer.from_json_file(self.parameters.transfers_json_path)
-        self.bills = Bill.from_json_file(self.parameters.bills_json_path)
 
 if __name__ == '__main__':
     parameters = Parameters()
     manager = Manager(parameters)
 
-    for apartment in manager.apartments.values():
-        print(apartment.key, apartment.name, apartment.location, apartment.area_m2)
-        for room in apartment.rooms.values():
-            print('  ', room.name, room.area_m2)
-
-    for tenant in manager.tenants.values():
-        print(tenant.name, tenant.apartment, tenant.room, tenant.rent_pln, tenant.deposit_pln, tenant.date_agreement_from, tenant.date_agreement_to)
-
-    for transfer in manager.transfers:
-        if transfer.tenant == tenant.name:
-            print('  ', transfer.amount_pln, transfer.date, transfer.settlement_year, transfer.settlement_month)
-
-    for bill in manager.bills.values():
-        print(bill.key, bill.amount_pln, bill.apartment_key, bill.due_date)
+    display_apartments(manager)
+    display_tenants(manager)
+    
+    print(f"\n{'=' * 70}\n")
